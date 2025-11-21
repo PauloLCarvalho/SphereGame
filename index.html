@@ -11,7 +11,7 @@
 </head>
 <body>
 
-<div id="info">Clique na tela → mouse para mirar<br>W/S = andar • A/D = virar • Clique = atirar</div>
+<div id="info">Clique na tela → mouse para mirar<br>W/S = andar • A/D = virar • Clique = atirar • C = alternar câmera • Shift = correr • Espaço = pular</div>
 
 <script src="https://cdn.babylonjs.com/babylon.js"></script>
 <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
@@ -36,7 +36,7 @@ const mat = new BABYLON.StandardMaterial("mat", scene);
 mat.diffuseTexture = new BABYLON.Texture("https://assets.babylonjs.com/textures/earth.jpg", scene);
 sphere.material = mat;
 
-const MOVE_SPEED = 8;
+let MOVE_SPEED = 8; // velocidade padrão
 const TURN_SPEED_KEY = 2.5;
 const TURN_SPEED_MOUSE = 0.008;
 const JUMP_POWER = 8;
@@ -82,18 +82,34 @@ document.addEventListener("mousemove", e => {
 window.addEventListener("keydown", e => {
     const k = e.key.toLowerCase();
     if ("wasd".includes(k)) keys[k] = true;
-    if (k === " " && isGrounded) { velocityY = JUMP_POWER; isGrounded = false; }
+
+    // ★ Espaço agora sempre permite pular se isGrounded
+    if (k === " " && isGrounded) { 
+        velocityY = JUMP_POWER; 
+        isGrounded = false; 
+    }
+
+    // ★ Alternar câmera com C
+    if (k === "c") cameraSwitched = !cameraSwitched;
+
+    // ★ SHIFT para correr
+    if (e.shiftKey) MOVE_SPEED = 15;
 });
 window.addEventListener("keyup", e => {
     const k = e.key.toLowerCase();
     if ("wasd".includes(k)) keys[k] = false;
+
+    // ★ Voltar velocidade ao soltar shift
+    if (!e.shiftKey) MOVE_SPEED = 8;
 });
 
 // Camera
 const camera = new BABYLON.FreeCamera("cam", new BABYLON.Vector3(0, 6, -15), scene);
 camera.inputs.clear();
-const camOffset = new BABYLON.Vector3(0, 3, 15);
+const camOffsetDefault = new BABYLON.Vector3(0, 3, 15);
+const camOffsetSwitch  = new BABYLON.Vector3(-1.5, 1, 4); // posição alternativa da câmera
 let camRot = 0;
+let cameraSwitched = false;
 
 // Seta (arrow)
 const arrow = BABYLON.MeshBuilder.CreateCylinder("arrow", { height: 3.5, diameterTop: 0, diameterBottom: 0.7, tessellation: 4 }, scene);
@@ -208,7 +224,9 @@ scene.onBeforeRenderObservable.add(() => {
         }
     }
 
-    // Camera com mira vertical
+    // ★ CÂMERA: alterna entre posição padrão e posição C
+    const camOffset = cameraSwitched ? camOffsetSwitch : camOffsetDefault;
+
     camRot = BABYLON.Scalar.Lerp(camRot, aimDir + Math.PI, 0.1);
     const offset = BABYLON.Vector3.TransformCoordinates(camOffset, BABYLON.Matrix.RotationY(camRot));
     const target = sphere.position.clone().add(offset);
