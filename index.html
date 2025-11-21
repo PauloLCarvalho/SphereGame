@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <title>BOLA COM MIRA 3D + BULLET PHYSICS</title>
+    <style>
+        body { margin:0; overflow:hidden; background:#111; cursor: crosshair; }
+        canvas { display:block; }
+        #info { position:absolute; top:10px; left:10px; color:white; font-family:Arial; background:rgba(0,0,0,0.5); padding:10px; border-radius:8px;}
+    </style>
+</head>
+<body>
+
+<div id="info">Clique na tela → mouse para mirar<br>W/S = andar • A/D = virar • Clique = atirar</div>
+
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+<script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+
+<script>
+const canvas = document.createElement("canvas");
+canvas.style.width = "100vw";
+canvas.style.height = "100vh";
+document.body.appendChild(canvas);
+
+const engine = new BABYLON.Engine(canvas, true);
+const scene = new BABYLON.Scene(engine);
+scene.clearColor = new BABYLON.Color4(0.5, 0.8, 0.9, 1);
+
+new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene).intensity = 0.9;
+
+const RADIUS = 1;
+const sphere = BABYLON.MeshBuilder.CreateSphere("sphere", { diameter: RADIUS*2, segments: 80 }, scene);
+sphere.position.y = RADIUS;
+
+const mat = new BABYLON.StandardMaterial("mat", scene);
+mat.diffuseTexture = new BABYLON.Texture("https://assets.babylonjs.com/textures/earth.jpg", scene);
+sphere.material = mat;
+
+const MOVE_SPEED = 8;
+const TURN_SPEED_KEY = 2.5;
+const TURN_SPEED_MOUSE = 0.008;
+const JUMP_POWER = 8;
+const GRAVITY = -25;
+
+let velocityY = 0;
+let isGrounded = true;
+let mouseControl = false;
+
+let moveDir = 0;
+let aimDir  = 0;
+let aimPitch = 0;
+const AIM_PITCH_LIMIT = Math.PI/3;
+
+const keys = { w:false, a:false, s:false, d:false };
+
+// ============================
+// ★ MIRA NO CENTRO (indica ponto de impacto do bullet no chão)
+// ============================
+const gui = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
+const crosshair = new BABYLON.GUI.TextBlock();
+crosshair.text = "+";
+crosshair.color = "white";
+crosshair.fontSize = 40;
+gui.addControl(crosshair);
+
+// Mouse
+canvas.addEventListener("click", () => {
+    canvas.requestPointerLock();
+    mouseControl = true;
+});
+document.addEventListener("pointerlockchange", () => {
+    if (!document.pointerLockElement) mouseControl = false;
+});
+document.addEventListener("mousemove", e => {
+    if (!mouseControl) return;
+    aimDir   += e.movementX * TURN_SPEED_MOUSE;
+    aimPitch -= e.movementY * TURN_SPEED_MOUSE;
+    aimPitch = Math.max(-AIM_PITCH_LIMIT, Math.min(AIM_PITCH_LIMIT, aimPitch));
+});
+
+// Teclado
+window.addEventListener("keydown", e => {
+    const k = e.key.toLowerCase();
+    if ("wasd".includes(k)) keys[k] = true;
+    if (k === " " && isGrounded) { velocityY = JUMP_POWER; isGrounded = false; }
+});
+window.addEventListener("keyup", e => {
+    const k = e.key.toLowerCase();
+    if ("wasd".includes(k)) keys[k] = false;
+});
+
+// Camera
+const camera = new BABYLON.FreeCamera("cam", new BABYLON.Vector3(0, 6, -15), scene);
+camera.inputs.clear();
+const camOffset = new BABYLON.Vector3(0, 3, 15);
+let camRot = 0;
+
+// Seta (arrow)
+const arrow = BABYLON.MeshBuilder.CreateCylinder("arrow", { height: 3.5, diameterTop: 0, diameterBottom: 0.7, tessellation: 4 }, scene);
+arrow.position.y = 2.2;
+const arrowMat = new BABYLON.StandardMaterial("", scene);
+arrowMat.diffuseColor = new BABYLON.Color3(1, 0.7, 0);
+arrowMat.emissiveColor = new BABYLON.Color3(0.6, 0.3, 0);
+arrow.material = arrowMat;
+
+// Tiros
+const PROJECTILE_SPEED = 60;
+let isFiring = false;
+let cooldown = 0;
+const bullets = [];
+
+scene.onPointerObservable.add(e => {
+    if (e.type === BABYLON.PointerEventTypes.POINTERDOWN && e.event.button === 0) isFiring = true;
+    if (e.type === BABYLON.PointerEventTypes.POINTERUP   && e.event.button === 0) isFiring = false;
+});
+
+// Chão
+const ground = BABYLON.MeshBuilder.CreateGround("ground", { width:500, height:500 }, scene);
+ground.material = new BABYLON.StandardMaterial("", scene);
+ground.material.diffuseTexture = new BABYLON.Texture("https://assets.babylonjs.com/textures/grass.png", scene);
+ground.material.diffuseTexture.uScale = ground.material.diffuseTexture.vScale = 80;
+
+// Loop
+scene.onBeforeRenderObservable.add(() => {
+    const dt = engine.getDeltaTime()/1000;
+
+    // Movimento da bola
+    if (keys.a) moveDir -= TURN_SPEED_KEY * dt;
+    if (keys.d) moveDir += TURN_SPEED_KEY * dt;
+
+    const moveForward = new BABYLON.Vector3(Math.sin(moveDir), 0, Math.cos(moveDir));
+
+    if (keys.w) sphere.position.addInPlace(moveForward.scale(MOVE_SPEED * dt));
+    if (keys.s) sphere.position.addInPlace(moveForward.scale(-MOVE_SPEED * dt));
+
+    // Rotação física (rolagem)
+    if (keys.w) sphere.rotation.x += (MOVE_SPEED * dt) / RADIUS;
+    if (keys.s) sphere.rotation.x -= (MOVE_SPEED * dt) / RADIUS;
+
+    sphere.rotation.y = moveDir;
+
+    // Mira 3D
+    const aimForward = new BABYLON.Vector3(
+        Math.sin(aimDir) * Math.cos(aimPitch),
+        Math.sin(aimPitch),
+        Math.cos(aimDir) * Math.cos(aimPitch)
+    ).normalize();
+
+    // ★ Atualizar mira para ponto de impacto do bullet no chão
+    const y0 = sphere.position.y + 1.4;
+    const vx = aimForward.x * PROJECTILE_SPEED;
+    const vy = aimForward.y * PROJECTILE_SPEED;
+    const vz = aimForward.z * PROJECTILE_SPEED;
+    const g = Math.abs(GRAVITY);
+    const tHit = (vy + Math.sqrt(vy*vy + 2*g*y0)) / g;
+    const hitX = sphere.position.x + vx * tHit;
+    const hitZ = sphere.position.z + vz * tHit;
+
+    const proj = BABYLON.Vector3.Project(
+        new BABYLON.Vector3(hitX, 0, hitZ),
+        BABYLON.Matrix.Identity(),
+        scene.getTransformMatrix(),
+        camera.viewport.toGlobal(engine)
+    );
+
+    crosshair.left = proj.x - engine.getRenderWidth()/2;
+    crosshair.top  = proj.y - engine.getRenderHeight()/2;
+
+    // Atualizar seta
+    arrow.position.x = sphere.position.x;
+    arrow.position.z = sphere.position.z;
+    arrow.position.y = sphere.position.y + 1.2;
+    arrow.rotation.y = aimDir;
+    arrow.rotation.x = Math.PI/2 - aimPitch;
+
+    // Pulo
+    if (!isGrounded) {
+        velocityY += GRAVITY * dt;
+        sphere.position.y += velocityY * dt;
+    }
+    if (sphere.position.y <= RADIUS) {
+        sphere.position.y = RADIUS;
+        velocityY = 0;
+        isGrounded = true;
+    }
+
+    // TIROS
+    cooldown -= dt;
+    if (isFiring && cooldown <= 0) {
+        cooldown = 0.07;
+        const spawn = sphere.position.clone();
+        spawn.y += 1.4;
+        const b = BABYLON.MeshBuilder.CreateSphere("bullet", { diameter: 0.22 }, scene);
+        b.position.copyFrom(spawn);
+        b.material = new BABYLON.StandardMaterial("", scene);
+        b.material.emissiveColor = new BABYLON.Color3(1, 0.9, 0.3);
+        bullets.push({ m: b, v: aimForward.scale(PROJECTILE_SPEED), t: 0 });
+    }
+
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        const bu = bullets[i];
+        bu.v.y += GRAVITY * 0.5 * dt;
+        bu.m.position.addInPlace(bu.v.scale(dt));
+        bu.t += dt;
+        if (bu.m.position.y <= 0 || bu.t > 5) {
+            bu.m.dispose();
+            bullets.splice(i, 1);
+        }
+    }
+
+    // Camera com mira vertical
+    camRot = BABYLON.Scalar.Lerp(camRot, aimDir + Math.PI, 0.1);
+    const offset = BABYLON.Vector3.TransformCoordinates(camOffset, BABYLON.Matrix.RotationY(camRot));
+    const target = sphere.position.clone().add(offset);
+    camera.position = BABYLON.Vector3.Lerp(camera.position, target, 0.1);
+
+    const camTarget = sphere.position.clone().add(
+        new BABYLON.Vector3(
+            Math.sin(aimDir) * Math.cos(aimPitch),
+            Math.sin(aimPitch) + 1.2,
+            Math.cos(aimDir) * Math.cos(aimPitch)
+        )
+    );
+    camera.setTarget(camTarget);
+});
+
+engine.runRenderLoop(() => scene.render());
+window.addEventListener("resize", () => engine.resize());
+</script>
+
+</body>
+</html>
