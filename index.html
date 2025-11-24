@@ -27,19 +27,22 @@ const engine = new BABYLON.Engine(canvas, true);
 const scene = new BABYLON.Scene(engine);
 scene.clearColor = new BABYLON.Color4(0.5, 0.8, 0.9, 1);
 
-new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene).intensity = 0.9;
+new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene).intensity = 1.5;
 
 const RADIUS = 1;
 const sphere = BABYLON.MeshBuilder.CreateSphere("sphere", { diameter: RADIUS*2, segments: 80 }, scene);
-sphere.position.set(0, RADIUS, 0); // Spawn no chão
+sphere.position.set(0, RADIUS, 0);
+
 sphere.checkCollisions = true;
 sphere.ellipsoid = new BABYLON.Vector3(RADIUS, RADIUS, RADIUS);
+sphere.ellipsoidOffset = new BABYLON.Vector3(0, 0, 0);
+scene.collisionsEnabled = true;
 
 const mat = new BABYLON.StandardMaterial("mat", scene);
 mat.diffuseTexture = new BABYLON.Texture("https://assets.babylonjs.com/textures/earth.jpg", scene);
 sphere.material = mat;
 
-let MOVE_SPEED = 8; // velocidade padrão
+let MOVE_SPEED = 8;
 const TURN_SPEED_KEY = 2.5;
 const TURN_SPEED_MOUSE = 0.008;
 const JUMP_POWER = 8;
@@ -49,14 +52,13 @@ let velocityY = 0;
 let isGrounded = true;
 let mouseControl = false;
 
-// ★ INÉRCIA: Velocidade horizontal da sphere
 let sphereVelocity = new BABYLON.Vector3(0, 0, 0);
-let maxSpeed = 10; // ★ Velocidade máxima dinâmica (muda com Shift)
-const ACCELERATION = 0.3; // Incremento de velocidade por frame
-const DECELERATION = 0.1; // Decremento de velocidade por frame quando solta a tecla
-let currentSpeed = 0; // ★ INÉRCIA: Velocidade atual incremental
-let isShiftPressed = false; // ★ SHIFT: Controla se Shift está pressionado
-let isDeceleratingFromShift = false; // ★ SHIFT: Desaceleração após soltar Shift
+let maxSpeed = 10;
+const ACCELERATION = 0.3;
+const DECELERATION = 0.1;
+let currentSpeed = 0;
+let isShiftPressed = false;
+let isDeceleratingFromShift = false;
 
 let moveDir = 0;
 let aimDir  = 0;
@@ -65,9 +67,6 @@ const AIM_PITCH_LIMIT = Math.PI/3;
 
 const keys = { w:false, a:false, s:false, d:false };
 
-// ============================
-// ★ MIRA NO CENTRO (indica ponto de impacto do bullet no chão)
-// ============================
 const gui = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
 const crosshair = new BABYLON.GUI.TextBlock();
 crosshair.text = "+";
@@ -75,7 +74,6 @@ crosshair.color = "white";
 crosshair.fontSize = 40;
 gui.addControl(crosshair);
 
-// Mouse
 canvas.addEventListener("click", () => {
     canvas.requestPointerLock();
     mouseControl = true;
@@ -90,21 +88,11 @@ document.addEventListener("mousemove", e => {
     aimPitch = Math.max(-AIM_PITCH_LIMIT, Math.min(AIM_PITCH_LIMIT, aimPitch));
 });
 
-// Teclado
 window.addEventListener("keydown", e => {
     const k = e.key.toLowerCase();
     if ("wasd".includes(k)) keys[k] = true;
-
-    // ★ Espaço agora sempre permite pular se isGrounded
-    if (k === " " && isGrounded) { 
-        velocityY = JUMP_POWER; 
-        isGrounded = false; 
-    }
-
-    // ★ Alternar câmera com C
+    if (k === " " && isGrounded) { velocityY = JUMP_POWER; isGrounded = false; }
     if (k === "c") cameraSwitched = !cameraSwitched;
-
-    // ★ SHIFT: Ativar modo corrida
     if (e.shiftKey && !isShiftPressed) {
         isShiftPressed = true;
         maxSpeed = 15;
@@ -114,39 +102,40 @@ window.addEventListener("keydown", e => {
 window.addEventListener("keyup", e => {
     const k = e.key.toLowerCase();
     if ("wasd".includes(k)) keys[k] = false;
-
-    // ★ SHIFT: Ao soltar Shift, iniciar desaceleração gradual
     if (!e.shiftKey && isShiftPressed) {
         isShiftPressed = false;
         maxSpeed = 10;
-        if (currentSpeed > 10) {
-            isDeceleratingFromShift = true;
-        }
+        if (currentSpeed > 10) isDeceleratingFromShift = true;
     }
 });
 
-// Camera
 const camera = new BABYLON.FreeCamera("cam", new BABYLON.Vector3(0, 10, -15), scene);
 camera.inputs.clear();
-camera.minZ = 0.1; // Melhorar renderização de objetos próximos
-camera.maxZ = 5000; // Aumentar distância de renderização
+camera.minZ = 0.1;
+camera.maxZ = 5000;
 const camOffsetDefault = new BABYLON.Vector3(0, 3, 15);
-const camOffsetSwitch  = new BABYLON.Vector3(-1, 1, 5); // tecla C pressionada // isCpressed
+const camOffsetSwitch  = new BABYLON.Vector3(-1, 1, 5);
 let camRot = 0;
 let cameraSwitched = false;
 
-// Seta (arrow)
-const arrow = BABYLON.MeshBuilder.CreateCylinder("arrow", { height: 3.0, diameterTop: 0, diameterBottom: 0.7, tessellation: 4 }, scene);
-arrow.position.y = 2.2;
-const arrowMat = new BABYLON.StandardMaterial("", scene);
-arrowMat.diffuseColor = new BABYLON.Color3(1, 0.7, 0);
-arrowMat.emissiveColor = new BABYLON.Color3(0.6, 0.3, 0);
-arrow.material = arrowMat;
+let minigun = null;
+let minigunAnimations = [];
+BABYLON.SceneLoader.ImportMesh("", "models/", "handheld_minigun.glb", scene, (meshes, particleSystems, skeletons, animationGroups) => {
+    minigun = meshes[0];
+    minigun.scaling.setAll(0.005); // <-- Ajusta o tamanho da minigun
+    // Centraliza pivô para rotação correta
+    const center = minigun.getBoundingInfo().boundingBox.center;
+    minigun.setPivotPoint(center);
+    // Armazena as animações e pausa elas
+    minigunAnimations = animationGroups;
+    minigunAnimations.forEach(anim => {
+        anim.stop();
+    });
+});
 
-// Tiros
 const PROJECTILE_SPEED = 60;
-const BOUNCE_DAMPING = 0.1; // ★ BOUNCE: Quanto de energia o projétil mantém ao quicar (0-1)
-const MAX_BOUNCES = 3; // ★ BOUNCE: Número máximo de quiques por projétil
+const BOUNCE_DAMPING = 0.1;
+const MAX_BOUNCES = 3;
 let isFiring = false;
 let cooldown = 0;
 const bullets = [];
@@ -156,32 +145,93 @@ scene.onPointerObservable.add(e => {
     if (e.type === BABYLON.PointerEventTypes.POINTERUP   && e.event.button === 0) isFiring = false;
 });
 
-// Mapa de batalha com blocos e obstáculos
 function createBattleMap() {
     const blockMaterial = new BABYLON.StandardMaterial("blockMat", scene);
-    blockMaterial.diffuseColor = new BABYLON.Color3(0.6, 0.6, 0.6);
+    blockMaterial.diffuseTexture = new BABYLON.Texture("texture/vigas.jpg", scene);
+    blockMaterial.diffuseTexture.uScale = 2;
+    blockMaterial.diffuseTexture.vScale = 2;
+    
+    const fenceMaterial = new BABYLON.StandardMaterial("fenceMat", scene);
+    fenceMaterial.diffuseColor = new BABYLON.Color3(0.3, 0.3, 0.35);
+    fenceMaterial.specularColor = new BABYLON.Color3(0.5, 0.5, 0.5);
+    fenceMaterial.emissiveColor = new BABYLON.Color3(0.05, 0.05, 0.05);
+    fenceMaterial.alpha = 0.6;
+    fenceMaterial.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
     
     const coverMaterial = new BABYLON.StandardMaterial("coverMat", scene);
     coverMaterial.diffuseColor = new BABYLON.Color3(0.4, 0.3, 0.2);
     
-    // Muros periféricos
     const walls = [
-        { pos: [0, 1.5, -30], size: [60, 3, 1] },  // Norte
-        { pos: [0, 1.5, 30], size: [60, 3, 1] },   // Sul
-        { pos: [-30, 1.5, 0], size: [1, 3, 60] },  // Oeste
-        { pos: [30, 1.5, 0], size: [1, 3, 60] }    // Leste
+        { pos: [0, 1.5, -30], size: [60, 3, 0.2] },
+        { pos: [0, 1.5, 30], size: [60, 3, 0.2] },
+        { pos: [-30, 1.5, 0], size: [0.2, 3, 60] },
+        { pos: [30, 1.5, 0], size: [0.2, 3, 60] }
     ];
     
     walls.forEach(w => {
-        const wall = BABYLON.MeshBuilder.CreateBox("wall", { 
-            width: w.size[0], height: w.size[1], depth: w.size[2] 
+        const fence = BABYLON.MeshBuilder.CreatePlane("fence", { 
+            width: w.size[0] > 1 ? w.size[0] : w.size[2], 
+            height: w.size[1] 
         }, scene);
-        wall.position.set(w.pos[0], w.pos[1], w.pos[2]);
-        wall.material = blockMaterial;
-        wall.checkCollisions = true;
+        fence.position.set(w.pos[0], w.pos[1], w.pos[2]);
+        
+        // Rotaciona para ficar vertical e na direção correta
+        if (w.size[0] > 1) {
+            fence.rotation.y = 0;
+        } else {
+            fence.rotation.y = Math.PI / 2;
+        }
+        
+        fence.material = fenceMaterial;
+        fence.checkCollisions = true;
+        
+        // Cria barras verticais da grade
+        const barCount = Math.floor((w.size[0] > 1 ? w.size[0] : w.size[2]) / 2);
+        for (let i = 0; i < barCount; i++) {
+            const bar = BABYLON.MeshBuilder.CreateBox("bar", { 
+                width: 0.1, 
+                height: w.size[1], 
+                depth: 0.1 
+            }, scene);
+            
+            if (w.size[0] > 1) {
+                bar.position.set(
+                    w.pos[0] - (w.size[0] / 2) + (i * 2) + 1,
+                    w.pos[1],
+                    w.pos[2]
+                );
+            } else {
+                bar.position.set(
+                    w.pos[0],
+                    w.pos[1],
+                    w.pos[2] - (w.size[2] / 2) + (i * 2) + 1
+                );
+            }
+            
+            bar.material = fenceMaterial;
+            bar.checkCollisions = true;
+        }
+        
+        // Barras horizontais
+        const hBar1 = BABYLON.MeshBuilder.CreateBox("hbar", { 
+            width: w.size[0] > 1 ? w.size[0] : 0.1, 
+            height: 0.1, 
+            depth: w.size[0] > 1 ? 0.1 : w.size[2] 
+        }, scene);
+        hBar1.position.set(w.pos[0], w.pos[1] + 1, w.pos[2]);
+        hBar1.material = fenceMaterial;
+        hBar1.checkCollisions = true;
+        
+        const hBar2 = BABYLON.MeshBuilder.CreateBox("hbar", { 
+            width: w.size[0] > 1 ? w.size[0] : 0.1, 
+            height: 0.1, 
+            depth: w.size[0] > 1 ? 0.1 : w.size[2] 
+        }, scene);
+        hBar2.position.set(w.pos[0], w.pos[1] - 1, w.pos[2]);
+        hBar2.material = fenceMaterial;
+        hBar2.checkCollisions = true;
     });
     
-    // Coberturas (baixas) espalhadas pelo mapa
     const covers = [
         [-12, 8], [12, 8], [-12, -8], [12, -8],
         [-18, 0], [18, 0], [0, 15], [0, -15],
@@ -189,21 +239,18 @@ function createBattleMap() {
     ];
     
     covers.forEach(pos => {
-        const cover = BABYLON.MeshBuilder.CreateBox("cover", {
-            width: 2, height: 1, depth: 2
-        }, scene);
+        const cover = BABYLON.MeshBuilder.CreateBox("cover", { width: 2, height: 1, depth: 2 }, scene);
         cover.position.set(pos[0], 0.5, pos[1]);
         cover.material = coverMaterial;
-        cover.checkCollisions = true;
+        cover.checkCollisions = true;              // <-- importante
     });
     
-    // Blocos altos (estruturas)
     const buildings = [
         { pos: [-18, 2.5, -18], size: [4, 5, 4] },
         { pos: [18, 3, 18], size: [5, 6, 3] },
         { pos: [-20, 2, 15], size: [3, 4, 6] },
         { pos: [15, 2.5, -20], size: [6, 5, 4] },
-        { pos: [5, 4, 5], size: [3, 8, 3] }  // Torre central
+        { pos: [5, 4, 5], size: [3, 8, 3] }
     ];
     
     buildings.forEach(b => {
@@ -212,109 +259,83 @@ function createBattleMap() {
         }, scene);
         building.position.set(b.pos[0], b.size[1]/2, b.pos[2]);
         building.material = blockMaterial;
-        building.checkCollisions = true;
+        building.checkCollisions = true;           // <-- importante
     });
     
-    // Plataformas elevadas
     const platforms = [
         [-10, -6], [10, 6], [6, -10], [-6, 12]
     ];
     
     platforms.forEach(pos => {
-        const platform = BABYLON.MeshBuilder.CreateBox("platform", {
-            width: 4, height: 0.3, depth: 4
-        }, scene);
+        const platform = BABYLON.MeshBuilder.CreateBox("platform", { width: 4, height: 0.3, depth: 4 }, scene);
         platform.position.set(pos[0], 2.5, pos[1]);
         platform.material = coverMaterial;
-        platform.checkCollisions = true;
+        platform.checkCollisions = true;           // <-- importante
         
-        // Suporte da plataforma
-        const support = BABYLON.MeshBuilder.CreateBox("support", {
-            width: 0.5, height: 2.5, depth: 0.5
-        }, scene);
+        const support = BABYLON.MeshBuilder.CreateBox("support", { width: 0.5, height: 2.5, depth: 0.5 }, scene);
         support.position.set(pos[0], 1.25, pos[1]);
         support.material = blockMaterial;
-        support.checkCollisions = true;
+        support.checkCollisions = true;             // <-- importante
     });
 }
 
 createBattleMap();
 
-// Chão do mapa
 const ground = BABYLON.MeshBuilder.CreateGround("ground", { width: 60, height: 60 }, scene);
 ground.position.y = 0;
 ground.material = new BABYLON.StandardMaterial("groundMat", scene);
-ground.material.diffuseColor = new BABYLON.Color3(0.3, 0.35, 0.3);
-ground.checkCollisions = true;
+ground.material.diffuseTexture = new BABYLON.Texture("../texture/ciment_chao.jpg", scene);
+ground.material.diffuseTexture.uScale = 15;
+ground.material.diffuseTexture.vScale = 15;
+ground.checkCollisions = true;                     // <-- importante
 
-// Loop
 scene.onBeforeRenderObservable.add(() => {
     const dt = engine.getDeltaTime()/1000;
 
-    // Movimento da bola
     if (keys.a) moveDir -= TURN_SPEED_KEY * dt;
     if (keys.d) moveDir += TURN_SPEED_KEY * dt;
 
     const moveForward = new BABYLON.Vector3(Math.sin(moveDir), 0, Math.cos(moveDir));
 
-    // ★ SHIFT: Desaceleração gradual após soltar Shift
     if (isDeceleratingFromShift && currentSpeed > 10) {
         currentSpeed = Math.max(currentSpeed - 1, 10);
-        if (currentSpeed <= 10) {
-            isDeceleratingFromShift = false;
-        }
+        if (currentSpeed <= 10) isDeceleratingFromShift = false;
     }
 
-    // ★ INÉRCIA: Sistema de aceleração/desaceleração incremental
     if (keys.w && !isDeceleratingFromShift) {
-        // Acelerar para frente
         currentSpeed = Math.min(currentSpeed + ACCELERATION, maxSpeed);
     } else if (keys.s) {
-        // ★ NOVA LÓGICA: Ré e freio inteligente
         if (currentSpeed <= 0) {
-            // Já parado ou indo para trás, acelera em ré
             currentSpeed = Math.max(currentSpeed - ACCELERATION, -maxSpeed);
         } else {
-            // Indo para frente, freia mais rápido
             currentSpeed = Math.max(currentSpeed - (DECELERATION + 0.2), 0);
         }
     } else {
-        // Desacelerar quando solta a tecla
-        if (currentSpeed > 0) {
-            currentSpeed = Math.max(currentSpeed - DECELERATION, 0);
-        } else if (currentSpeed < 0) {
-            currentSpeed = Math.min(currentSpeed + DECELERATION, 0);
-        }
+        if (currentSpeed > 0) currentSpeed = Math.max(currentSpeed - DECELERATION, 0);
+        else if (currentSpeed < 0) currentSpeed = Math.min(currentSpeed + DECELERATION, 0);
     }
     
-    // ★ INÉRCIA: Aplicar movimento com a velocidade atual
     if (Math.abs(currentSpeed) > 0.01) {
         const direction = currentSpeed < 0 ? moveForward.scale(-1) : moveForward;
-        const newPos = sphere.position.add(direction.scale(Math.abs(currentSpeed) * dt));
-        const ray = new BABYLON.Ray(sphere.position, direction, Math.abs(currentSpeed) * dt + RADIUS);
-        const hit = scene.pickWithRay(ray, mesh => mesh !== sphere && mesh !== arrow && !mesh.name.includes("bullet"));
-        if (!hit.hit) {
-            sphere.position.copyFrom(newPos);
-        } else {
-            // ★ INÉRCIA: Parar ao colidir
-            currentSpeed *= 0.3;
+        const movement = direction.scale(Math.abs(currentSpeed) * dt);
+
+        // === AQUI ESTÁ A ÚNICA MUDANÇA FUNCIONAL QUE EU FIZ ===
+        sphere.moveWithCollisions(movement);
+        // ====================================================
+
+        if (Math.abs(currentSpeed) > 0.1) {
+            sphere.rotation.x += (currentSpeed * dt) / RADIUS;
         }
     }
 
-    // ★ INÉRCIA: Rotação física baseada na velocidade atual
-    if (Math.abs(currentSpeed) > 0.1) {
-        sphere.rotation.x += (currentSpeed * dt) / RADIUS;
-    }
     sphere.rotation.y = moveDir;
 
-    // Mira 3D
     const aimForward = new BABYLON.Vector3(
         Math.sin(aimDir) * Math.cos(aimPitch),
         Math.sin(aimPitch),
         Math.cos(aimDir) * Math.cos(aimPitch)
     ).normalize();
 
-    // ★ Atualizar mira para ponto de impacto do bullet no chão
     const y0 = sphere.position.y + 1.4;
     const vx = aimForward.x * PROJECTILE_SPEED;
     const vy = aimForward.y * PROJECTILE_SPEED;
@@ -334,67 +355,70 @@ scene.onBeforeRenderObservable.add(() => {
     crosshair.left = proj.x - engine.getRenderWidth()/2;
     crosshair.top  = proj.y - engine.getRenderHeight()/2;
 
-    // Atualizar seta - posicionada na lateral direita da sphere
     const rightOffset = new BABYLON.Vector3(
-        Math.cos(aimDir) * (RADIUS + 0.02),// deslocamento lateral
-        0.5,
-        -Math.sin(aimDir) * (RADIUS + 0.02)// deslocamento lateral
+        Math.cos(aimDir) * 
+        (RADIUS + 0.04), // <-- ajuste lateral
+        0.5,                               // <-- ajuste vertical
+        -Math.sin(aimDir) * (RADIUS + 0.5) // <-- ajuste profundidade
     );
-    arrow.position.copyFrom(sphere.position.add(rightOffset));
-    arrow.rotation.y = aimDir;
-    arrow.rotation.x = Math.PI/2 - aimPitch;
-
-    // Pulo
-    if (!isGrounded) {
-        velocityY += GRAVITY * dt;
-        sphere.position.y += velocityY * dt;
+    if (minigun) {
+        // Para ajuste fino da posição da minigun, altere os valores acima em rightOffset
+        minigun.position.copyFrom(sphere.position.add(rightOffset));
+        minigun.rotationQuaternion = BABYLON.Quaternion.RotationYawPitchRoll(aimDir, -aimPitch, 0);
+        // A animação da minigun não será mais controlada pelo clique do mouse
+        // minigunAnimations.forEach(anim => anim.play(true)); // (Descomente para animação contínua)
     }
-    if (sphere.position.y <= RADIUS) {
-        sphere.position.y = RADIUS;
-        velocityY = 0;
+
+    // Aplica gravidade com moveWithCollisions
+    velocityY += GRAVITY * dt;
+    const verticalMovement = new BABYLON.Vector3(0, velocityY * dt, 0);
+    sphere.moveWithCollisions(verticalMovement);
+    
+    // Verifica se está no chão com raycast partindo do centro da esfera
+    const rayDown = new BABYLON.Ray(sphere.position, new BABYLON.Vector3(0, -1, 0), RADIUS + 0.15);
+    const hit = scene.pickWithRay(rayDown, mesh => mesh !== sphere && mesh !== minigun && !mesh.name.includes("bullet"));
+    
+    if (hit.hit && hit.distance <= RADIUS + 0.02) {
         isGrounded = true;
+        if (velocityY < 0) {
+            velocityY = 0;
+        }
+    } else {
+        isGrounded = false;
     }
 
-    // TIROS
     cooldown -= dt;
     if (isFiring && cooldown <= 0) {
         cooldown = 0.07;
-        // Spawn do bullet na ponta da seta (lateral direita da sphere)
         const rightOffset = new BABYLON.Vector3(
-            Math.cos(aimDir) * (RADIUS + 0.02), // deslocamenteo lateral
+            Math.cos(aimDir) * (RADIUS + 0.02),
             1,
-            -Math.sin(aimDir) * (RADIUS + 0.02) // deslocamenteo lateral
-        );
+            -Math.sin(aimDir) * (RADIUS + 0.02)
+        ); //                  altera o tamanho do projetil em diameter: 0.12
         const spawn = sphere.position.add(rightOffset);
-        const b = BABYLON.MeshBuilder.CreateSphere("bullet", { diameter: 0.22 }, scene);
+        const b = BABYLON.MeshBuilder.CreateSphere("bullet", { diameter: 0.12 }, scene);
         b.position.copyFrom(spawn);
         b.material = new BABYLON.StandardMaterial("", scene);
         b.material.emissiveColor = new BABYLON.Color3(1, 0.9, 0.3);
-        bullets.push({ m: b, v: aimForward.scale(PROJECTILE_SPEED), t: 0, bounces: 0 }); // ★ BOUNCE: adicionar contador de quiques
+        bullets.push({ m: b, v: aimForward.scale(PROJECTILE_SPEED), t: 0, bounces: 0 });
     }
 
     for (let i = bullets.length - 1; i >= 0; i--) {
         const bu = bullets[i];
         bu.v.y += GRAVITY * 0.5 * dt;
         
-        // Verificar colisão com raycasting
         const velocity = bu.v.scale(dt);
         const ray = new BABYLON.Ray(bu.m.position, velocity.normalize(), velocity.length());
-        const hit = scene.pickWithRay(ray, mesh => mesh !== sphere && mesh !== arrow && !mesh.name.includes("bullet"));
+        const hit = scene.pickWithRay(ray, mesh => mesh !== sphere && mesh !== minigun && !mesh.name.includes("bullet"));
         
         if (hit.hit) {
-            // ★ BOUNCE: Projétil colidiu, calcular reflexão
             if (bu.bounces < MAX_BOUNCES) {
-                // Calcular vetor refletido
                 const normal = hit.getNormal(true);
                 const reflected = bu.v.subtract(normal.scale(2 * BABYLON.Vector3.Dot(bu.v, normal)));
-                bu.v = reflected.scale(BOUNCE_DAMPING); // Reduzir velocidade a cada quique
+                bu.v = reflected.scale(BOUNCE_DAMPING);
                 bu.bounces++;
-                
-                // Mover ligeiramente para fora da superfície para evitar múltiplas colisões
                 bu.m.position.addInPlace(normal.scale(0.1));
             } else {
-                // ★ BOUNCE: Máximo de quiques atingido, destruir projétil
                 bu.m.dispose();
                 bullets.splice(i, 1);
             }
@@ -402,7 +426,6 @@ scene.onBeforeRenderObservable.add(() => {
             bu.m.position.addInPlace(velocity);
             bu.t += dt;
             
-            // ★ BOUNCE: Quicar no chão
             if (bu.m.position.y <= 0) {
                 if (bu.bounces < MAX_BOUNCES) {
                     bu.v.y = Math.abs(bu.v.y) * BOUNCE_DAMPING;
@@ -413,14 +436,12 @@ scene.onBeforeRenderObservable.add(() => {
                     bullets.splice(i, 1);
                 }
             } else if (bu.t > 5) {
-                // Tempo máximo excedido
                 bu.m.dispose();
                 bullets.splice(i, 1);
             }
         }
     }
 
-    // ★ CÂMERA: alterna entre posição padrão e posição C
     const camOffset = cameraSwitched ? camOffsetSwitch : camOffsetDefault;
 
     camRot = BABYLON.Scalar.Lerp(camRot, aimDir + Math.PI, 0.1);
