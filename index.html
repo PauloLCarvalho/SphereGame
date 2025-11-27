@@ -11,7 +11,7 @@
 </head>
 <body>
 
-<div id="info">Clique na tela → mouse para mirar<br>W/S = andar • A/D = virar • Clique = atirar • C = alternar câmera • Shift = correr • Espaço = pular</div>
+<div id="info">Ball_game by Luciano</div>
 
 <script src="https://cdn.babylonjs.com/babylon.js"></script>
 <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
@@ -131,6 +131,9 @@ BABYLON.SceneLoader.ImportMesh("", "models/", "handheld_minigun.glb", scene, (me
     minigunAnimations.forEach(anim => {
         anim.stop();
     });
+    // Log do pivô local e global
+    console.log("Pivô local da minigun:", minigun.getPivotPoint());
+    console.log("Pivô global da minigun:", minigun.getAbsolutePivotPoint());
 });
 
 const PROJECTILE_SPEED = 60;
@@ -357,9 +360,9 @@ scene.onBeforeRenderObservable.add(() => {
 
     const rightOffset = new BABYLON.Vector3(
         Math.cos(aimDir) * 
-        (RADIUS + 0.04), // <-- ajuste lateral
+        (RADIUS + 0.0), // <-- ajuste lateral
         0.5,                               // <-- ajuste vertical
-        -Math.sin(aimDir) * (RADIUS + 0.5) // <-- ajuste profundidade
+        -Math.sin(aimDir) * (RADIUS + 0.0) // <-- ajuste profundidade
     );
     if (minigun) {
         // Para ajuste fino da posição da minigun, altere os valores acima em rightOffset
@@ -391,10 +394,10 @@ scene.onBeforeRenderObservable.add(() => {
     if (isFiring && cooldown <= 0) {
         cooldown = 0.07;
         const rightOffset = new BABYLON.Vector3(
-            Math.cos(aimDir) * (RADIUS + 0.02),
-            1,
-            -Math.sin(aimDir) * (RADIUS + 0.02)
-        ); //                  altera o tamanho do projetil em diameter: 0.12
+            Math.cos(aimDir) * (RADIUS + 0.05), // <-- ajuste lateral padrão 0.02
+            0.65, // altura do spawn
+            -Math.sin(aimDir) * (RADIUS - 0.2) // <-- ajuste profundidade padrão 0.02
+        );
         const spawn = sphere.position.add(rightOffset);
         const b = BABYLON.MeshBuilder.CreateSphere("bullet", { diameter: 0.12 }, scene);
         b.position.copyFrom(spawn);
@@ -409,8 +412,13 @@ scene.onBeforeRenderObservable.add(() => {
         
         const velocity = bu.v.scale(dt);
         const ray = new BABYLON.Ray(bu.m.position, velocity.normalize(), velocity.length());
-        const hit = scene.pickWithRay(ray, mesh => mesh !== sphere && mesh !== minigun && !mesh.name.includes("bullet"));
-        
+        // Remove colisão com a minigun e Object_12
+        const hit = scene.pickWithRay(ray, mesh => mesh !== sphere && !mesh.name.includes("bullet") && mesh !== minigun && mesh.name !== "Object_12");
+        if (hit.pickedMesh) {
+            console.log("Colisão com:", hit.pickedMesh.name);
+        } else {
+            console.log("Colisão com: desconhecido");
+        }
         if (hit.hit) {
             if (bu.bounces < MAX_BOUNCES) {
                 const normal = hit.getNormal(true);
