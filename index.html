@@ -120,21 +120,20 @@ let cameraSwitched = false;
 
 let minigun = null;
 let minigunAnimations = [];
-BABYLON.SceneLoader.ImportMesh("", "models/", "handheld_minigun.glb", scene, (meshes, particleSystems, skeletons, animationGroups) => {
-    minigun = meshes[0];
-    minigun.scaling.setAll(0.005); // <-- Ajusta o tamanho da minigun
-    // Centraliza pivô para rotação correta
-    const center = minigun.getBoundingInfo().boundingBox.center;
-    minigun.setPivotPoint(center);
-    // Armazena as animações e pausa elas
-    minigunAnimations = animationGroups;
-    minigunAnimations.forEach(anim => {
-        anim.stop();
+let pontaMini = null;
+let baseMini = null;
+let cabeca = null;
+
+BABYLON.SceneLoader.ImportMesh("", "models/", "cabeca_1.glb", scene, (meshes) => {
+    cabeca = meshes[0];
+    cabeca.scaling.setAll(1);
+    cabeca.setPivotPoint(new BABYLON.Vector3(0, -RADIUS, 0));
+    pontaMini = meshes.find(m => m.name.toLowerCase().includes("ponta_mini"));
+    baseMini = meshes.find(m => m.name.toLowerCase().includes("base_mini"));
+    /*if (baseMini) {
+        baseMini.rotate(BABYLON.Axis.Y, Math.PI/2, BABYLON.Space.LOCAL); // gira 90° no início
+    }*/
     });
-    // Log do pivô local e global
-    console.log("Pivô local da minigun:", minigun.getPivotPoint());
-    console.log("Pivô global da minigun:", minigun.getAbsolutePivotPoint());
-});
 
 const PROJECTILE_SPEED = 60;
 const BOUNCE_DAMPING = 0.1;
@@ -372,6 +371,11 @@ scene.onBeforeRenderObservable.add(() => {
         // minigunAnimations.forEach(anim => anim.play(true)); // (Descomente para animação contínua)
     }
 
+    if (cabeca) {
+        cabeca.position.copyFrom(sphere.position);
+        cabeca.rotationQuaternion = BABYLON.Quaternion.RotationYawPitchRoll(sphere.rotation.y, 0, 0);
+    }
+
     // Aplica gravidade com moveWithCollisions
     velocityY += GRAVITY * dt;
     const verticalMovement = new BABYLON.Vector3(0, velocityY * dt, 0);
@@ -465,7 +469,14 @@ scene.onBeforeRenderObservable.add(() => {
         )
     );
     camera.setTarget(camTarget);
-});
+
+    if (pontaMini && isFiring) {
+        pontaMini.rotate(BABYLON.Axis.Y, 0.5, BABYLON.Space.LOCAL);
+    }
+    /*if (baseMini && isFiring) {
+        baseMini.rotate(BABYLON.Axis.Y, 0.5, BABYLON.Space.LOCAL);
+    }*/
+    });
 
 engine.runRenderLoop(() => scene.render());
 window.addEventListener("resize", () => engine.resize());
