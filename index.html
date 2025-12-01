@@ -18,14 +18,18 @@
 <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
 
 <script>
+console.log("Script Babylon.js iniciado!");
+
 const canvas = document.createElement("canvas");
 canvas.style.width = "100vw";
 canvas.style.height = "100vh";
 document.body.appendChild(canvas);
+console.log("Canvas criado e adicionado ao body.");
 
 const engine = new BABYLON.Engine(canvas, true);
 const scene = new BABYLON.Scene(engine);
 scene.clearColor = new BABYLON.Color4(0.5, 0.8, 0.9, 1);
+console.log("Engine e Scene criados.");
 
 new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene).intensity = 1.5;
 
@@ -66,6 +70,7 @@ let aimPitch = 0;
 const AIM_PITCH_LIMIT = Math.PI/3;
 
 const keys = { w:false, a:false, s:false, d:false };
+let miniGun = null;
 
 const gui = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
 const crosshair = new BABYLON.GUI.TextBlock();
@@ -124,7 +129,16 @@ let pontaMini = null;
 let baseMini = null;
 let cabeca = null;
 
-BABYLON.SceneLoader.ImportMesh("", "models/", "cabeca_1.glb", scene, (meshes) => {
+BABYLON.SceneLoader.ImportMesh("", "models/", "first_skin.glb", scene, (meshes) => {
+    // Log de todos os nomes dos meshes importados
+    console.log("Meshes importados do first_skin:", meshes.map(m => m.name));
+    // Tenta encontrar o mesh exato chamado miniGun
+    miniGun = meshes.find(m => m.name === "miniGun");
+    if (miniGun) {
+        console.log("Mesh miniGun encontrado!");
+    } else {
+        console.warn("Mesh miniGun NÃO encontrado!");
+    }
     cabeca = meshes[0];
     cabeca.scaling.setAll(1);
     cabeca.setPivotPoint(new BABYLON.Vector3(0, -RADIUS, 0));
@@ -134,6 +148,24 @@ BABYLON.SceneLoader.ImportMesh("", "models/", "cabeca_1.glb", scene, (meshes) =>
         baseMini.rotate(BABYLON.Axis.Y, Math.PI/2, BABYLON.Space.LOCAL); // gira 90° no início
     }*/
     });
+
+/*BABYLON.SceneLoader.ImportMesh("", "models/", "handheld_minigun.glb", scene, (meshes, particleSystems, skeletofirst_skinationGroups) => {
+    minigun = meshes[0];
+    minigun.scaling.setAll(0.005); // <-- Ajusta o tamanho da minigun
+    // Centraliza pivô para rotação correta
+    const center = minigun.getBoundingInfo().boundingBox.center;
+    minigun.setPivotPoint(center);
+    // Armazena as animações e pausa elas
+    minigunAnimations = animationGroups;
+    minigunAnimations.forEach(anim => {
+        anim.stop();
+    });
+    // Log do pivô local e global
+    console.log("Pivô local da minigun:", minigun.getPivotPoint());
+    console.log("Pivô global da minigun:", minigun.getAbsolutePivotPoint());
+    // Encontra o mesh exato chamado miniGun
+    miniGun = meshes.find(m => m.name === "miniGun");
+    });*/
 
 const PROJECTILE_SPEED = 60;
 const BOUNCE_DAMPING = 0.1;
@@ -291,7 +323,8 @@ ground.material.diffuseTexture.uScale = 15;
 ground.material.diffuseTexture.vScale = 15;
 ground.checkCollisions = true;                     // <-- importante
 
-scene.onBeforeRenderObservable.add(() => {
+
+engine.runRenderLoop(() => {
     const dt = engine.getDeltaTime()/1000;
 
     if (keys.a) moveDir -= TURN_SPEED_KEY * dt;
@@ -321,9 +354,7 @@ scene.onBeforeRenderObservable.add(() => {
         const direction = currentSpeed < 0 ? moveForward.scale(-1) : moveForward;
         const movement = direction.scale(Math.abs(currentSpeed) * dt);
 
-        // === AQUI ESTÁ A ÚNICA MUDANÇA FUNCIONAL QUE EU FIZ ===
         sphere.moveWithCollisions(movement);
-        // ====================================================
 
         if (Math.abs(currentSpeed) > 0.1) {
             sphere.rotation.x += (currentSpeed * dt) / RADIUS;
@@ -357,20 +388,10 @@ scene.onBeforeRenderObservable.add(() => {
     crosshair.left = proj.x - engine.getRenderWidth()/2;
     crosshair.top  = proj.y - engine.getRenderHeight()/2;
 
-    const rightOffset = new BABYLON.Vector3(
-        Math.cos(aimDir) * 
-        (RADIUS + 0.0), // <-- ajuste lateral
-        0.5,                               // <-- ajuste vertical
-        -Math.sin(aimDir) * (RADIUS + 0.0) // <-- ajuste profundidade
-    );
-    if (minigun) {
-        // Para ajuste fino da posição da minigun, altere os valores acima em rightOffset
-        minigun.position.copyFrom(sphere.position.add(rightOffset));
-        minigun.rotationQuaternion = BABYLON.Quaternion.RotationYawPitchRoll(aimDir, -aimPitch, 0);
-        // A animação da minigun não será mais controlada pelo clique do mouse
-        // minigunAnimations.forEach(anim => anim.play(true)); // (Descomente para animação contínua)
+    if (miniGun) {
+        miniGun.rotationQuaternion = BABYLON.Quaternion.RotationYawPitchRoll(aimDir, -aimPitch, 0);
+        console.log("miniGun rotation:", miniGun.rotation.x, miniGun.rotation.y, miniGun.rotation.z);
     }
-
     if (cabeca) {
         cabeca.position.copyFrom(sphere.position);
         cabeca.rotationQuaternion = BABYLON.Quaternion.RotationYawPitchRoll(sphere.rotation.y, 0, 0);
@@ -470,16 +491,30 @@ scene.onBeforeRenderObservable.add(() => {
     );
     camera.setTarget(camTarget);
 
+    // Rotaciona o mesh miniGun se estiver atirando
+    if (miniGun && isFiring) {
+        miniGun.rotationQuaternion = BABYLON.Quaternion.RotationYawPitchRoll(aimDir, -aimPitch, 0);
+        miniGun.rotate(BABYLON.Axis.Z, 0.5, BABYLON.Space.LOCAL);
+        console.log("miniGun rotation:", miniGun.rotation.x, miniGun.rotation.y, miniGun.rotation.z);
+    }
+    if (minigun) {
+        // Aplica o padrão do handheld_minigun.glb
+        const rightOffset = new BABYLON.Vector3(
+            Math.cos(aimDir) * (RADIUS + 0.0),
+            0.5,
+            -Math.sin(aimDir) * (RADIUS + 0.0)
+        );
+        minigun.position.copyFrom(sphere.position.add(rightOffset));
+        minigun.rotationQuaternion = BABYLON.Quaternion.RotationYawPitchRoll(aimDir, -aimPitch, 0);
+        console.log("minigun rotation:", minigun.rotation.x, minigun.rotation.y, minigun.rotation.z);
+    }
+
     if (pontaMini && isFiring) {
         pontaMini.rotate(BABYLON.Axis.Y, 0.5, BABYLON.Space.LOCAL);
     }
-    /*if (baseMini && isFiring) {
-        baseMini.rotate(BABYLON.Axis.Y, 0.5, BABYLON.Space.LOCAL);
-    }*/
-    });
 
-engine.runRenderLoop(() => scene.render());
-window.addEventListener("resize", () => engine.resize());
+    scene.render();
+});
 </script>
 
 </body>
