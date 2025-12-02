@@ -18,6 +18,14 @@
 <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
 
 <script>
+// Parâmetros para ajustar a posição do mesh miniGun
+let miniGunOffsetX = 0;
+let miniGunOffsetY = 0;
+let miniGunOffsetZ = 0;
+// Parâmetros para controlar a posição do mesh miniGun
+let miniGunOffsetX = 0;
+let miniGunOffsetY = 0;
+let miniGunOffsetZ = 0;
 const canvas = document.createElement("canvas");
 canvas.style.width = "100vw";
 canvas.style.height = "100vh";
@@ -118,19 +126,33 @@ const camOffsetSwitch  = new BABYLON.Vector3(-1, 1, 5);
 let camRot = 0;
 let cameraSwitched = false;
 
-let minigun = null;
-let minigunAnimations = [];
+let modelo3D = null;
+let modelo3DAnimations = [];
 BABYLON.SceneLoader.ImportMesh("", "models/", "first_skin.glb", scene, (meshes, particleSystems, skeletons, animationGroups) => {
-    minigun = meshes[0];
-    minigun.scaling.setAll(1); // <-- Ajusta o tamanho da minigun
+    modelo3D = meshes[0];
+    modelo3D.scaling.setAll(1); // <-- Ajusta o tamanho da modelo3D
+    modelo3D.rotation = new BABYLON.Vector3(0, Math.PI, 0);
     // Centraliza pivô do modelo no centro da sphere
     const sphereCenter = sphere.getAbsolutePosition();
-    const minigunCenter = minigun.getBoundingInfo().boundingBox.centerWorld;
-    const offset = sphereCenter.subtract(minigunCenter);
-    minigun.setPivotPoint(minigun.getPivotPoint().add(offset));
+    const modelo3DCenter = modelo3D.getBoundingInfo().boundingBox.centerWorld;
+    const offset = sphereCenter.subtract(modelo3DCenter);
+    modelo3D.setPivotPoint(modelo3D.getPivotPoint().add(offset));
+
+
+    // Remove miniGun da hierarquia do modelo3D e adiciona diretamente à cena
+    /*#######################################################################*/
+    const miniGunMesh = modelo3D.getChildMeshes().find(m => m.name === "miniGun");
+    if (miniGunMesh) {
+        // Salva posição absoluta original antes de remover da hierarquia
+        const originalPos = miniGunMesh.getAbsolutePosition().clone();
+        miniGunMesh.parent = null;
+        scene.addMesh(miniGunMesh);
+        miniGunMesh.position.copyFrom(originalPos); // garante pivô original
+        window.miniGunMesh = miniGunMesh; // para acesso global no render loop
+    }
     // Armazena as animações e pausa elas
-    minigunAnimations = animationGroups;
-    minigunAnimations.forEach(anim => {
+    modelo3DAnimations = animationGroups;
+    modelo3DAnimations.forEach(anim => {
         anim.stop();
     });
 });
@@ -292,6 +314,13 @@ ground.material.diffuseTexture.vScale = 15;
 ground.checkCollisions = true;                     // <-- importante
 
 scene.onBeforeRenderObservable.add(() => {
+        // Aplica offsets definidos pelo usuário ao mesh miniGun
+        if (window.miniGunMesh) {
+            window.miniGunMesh.position.addInPlace(new BABYLON.Vector3(miniGunOffsetX, miniGunOffsetY, miniGunOffsetZ));
+            // Faz o miniGun sempre apontar para a direção do crosshair
+            const lookPoint = window.miniGunMesh.position.add(aimForward.scale(10));
+            window.miniGunMesh.lookAt(lookPoint);
+        }
     const dt = engine.getDeltaTime()/1000;
 
     if (keys.a) moveDir -= TURN_SPEED_KEY * dt;
@@ -355,20 +384,25 @@ scene.onBeforeRenderObservable.add(() => {
     // Ajusta posição do crosshair na tela
     crosshair.left = proj.x - engine.getRenderWidth()/2;
     crosshair.top  = proj.y - engine.getRenderHeight()/2;
-    // Ajusta posição da minigun em relação à sphere
+    // Ajusta posição da modelo3D em relação à sphere
     const rightOffset = new BABYLON.Vector3(
         Math.cos(aimDir) * 
         (RADIUS + 0.04), // <-- ajuste lateral
         0.5,                               // <-- ajuste vertical
         -Math.sin(aimDir) * (RADIUS + 0.5) // <-- ajuste profundidade
     );
-    if (minigun) {
-        // minigun deve apenas rotacionar em torno do seu pivô centralizado, e seguir sphere.x e sphere.z
-        minigun.position.x = sphere.position.x;
-        minigun.position.z = sphere.position.z;
-        minigun.position.y = sphere.position.y; // <-- ajuste vertical da minigun
-        minigun.rotationQuaternion = BABYLON.Quaternion.RotationYawPitchRoll(aimDir, -aimPitch, 0);
-        // minigunAnimations.forEach(anim => anim.play(true)); // (Descomente para animação contínua)
+    if (modelo3D) {
+        // Atualiza posição e rotação do modelo3D para seguir a sphere
+        modelo3D.position.x = sphere.position.x;
+        modelo3D.position.z = sphere.position.z;
+        modelo3D.position.y = sphere.position.y; // <-- ajuste vertical da modelo3D
+        modelo3D.rotation.y = moveDir;
+    }
+    // Atualiza miniGunMesh independente do modelo3D
+    if (window.miniGunMesh) {
+        // Mantém a posição original do mesh miniGun
+        const lookPoint = window.miniGunMesh.position.add(aimForward.scale(10));
+        window.miniGunMesh.lookAt(lookPoint);
     }
 
     // Aplica gravidade com moveWithCollisions
@@ -378,7 +412,7 @@ scene.onBeforeRenderObservable.add(() => {
     
     // Verifica se está no chão com raycast partindo do centro da esfera
     const rayDown = new BABYLON.Ray(sphere.position, new BABYLON.Vector3(0, -1, 0), RADIUS + 0.15);
-    const hit = scene.pickWithRay(rayDown, mesh => mesh !== sphere && mesh !== minigun && !mesh.name.includes("bullet"));
+    const hit = scene.pickWithRay(rayDown, mesh => mesh !== sphere && mesh !== modelo3D && !mesh.name.includes("bullet"));
     
     if (hit.hit && hit.distance <= RADIUS + 0.02) {
         isGrounded = true;
@@ -411,7 +445,7 @@ scene.onBeforeRenderObservable.add(() => {
         
         const velocity = bu.v.scale(dt);
         const ray = new BABYLON.Ray(bu.m.position, velocity.normalize(), velocity.length());
-        const hit = scene.pickWithRay(ray, mesh => mesh !== sphere && mesh !== minigun && !mesh.name.includes("bullet"));
+        const hit = scene.pickWithRay(ray, mesh => mesh !== sphere && mesh !== modelo3D && !mesh.name.includes("bullet"));
         
         if (hit.hit) {
             if (bu.bounces < MAX_BOUNCES) {
