@@ -384,15 +384,18 @@ scene.onBeforeRenderObservable.add(() => {
         modelo3D.position.x = sphere.position.x;
         modelo3D.position.z = sphere.position.z;
         modelo3D.position.y = sphere.position.y; // <-- ajuste vertical da modelo3D
-        modelo3D.rotation.y = moveDir;
+
+        // Faz a modelo3D olhar para a direção do crosshair
+        modelo3D.rotation.y = Math.atan2(rightOffset.x, rightOffset.z); 
     }
-    // Atualiza miniGunMesh independente do modelo3D
+    // Atualiza miniGunMesh continuamente na mesma posição do spawn do bullet
     if (window.miniGunMesh) {
-        let posX = miniGunOffsetX;
-        let posY = miniGunOffsetY;
-        let posZ = miniGunOffsetZ;
-        // Aplica offsets definidos pelo usuário
-        const miniGunPos = sphere.position.add(new BABYLON.Vector3(posX + 0.9, posY + 1.1, posZ));
+        const rightOffset = new BABYLON.Vector3(
+            Math.cos(aimDir) * (RADIUS + 0.02),
+            1,
+            -Math.sin(aimDir) * (RADIUS + 0.02)
+        );
+        const miniGunPos = sphere.position.add(rightOffset);
         window.miniGunMesh.position.copyFrom(miniGunPos);
         // Faz o miniGun sempre apontar para a direção do crosshair
         const lookPoint = miniGunPos.add(aimForward.scale(10));
@@ -420,12 +423,17 @@ scene.onBeforeRenderObservable.add(() => {
     cooldown -= dt;
     if (isFiring && cooldown <= 0) {
         cooldown = 0.07;
+        // Calcula posição de spawn do bullet normalmente
         const rightOffset = new BABYLON.Vector3(
             Math.cos(aimDir) * (RADIUS + 0.02),
             1,
             -Math.sin(aimDir) * (RADIUS + 0.02)
-        ); //                  altera o tamanho do projetil em diameter: 0.12
+        );
         const spawn = sphere.position.add(rightOffset);
+        // Faz o mesh miniGun seguir a posição do spawn do bullet
+        if (window.miniGunMesh) {
+            window.miniGunMesh.position.copyFrom(spawn);
+        }
         const b = BABYLON.MeshBuilder.CreateSphere("bullet", { diameter: 0.12 }, scene);
         b.position.copyFrom(spawn);
         b.material = new BABYLON.StandardMaterial("", scene);
