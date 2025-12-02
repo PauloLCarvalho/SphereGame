@@ -19,13 +19,11 @@
 
 <script>
 // Parâmetros para ajustar a posição do mesh miniGun
-let miniGunOffsetX = 0;
-let miniGunOffsetY = 0;
-let miniGunOffsetZ = 0;
+// (já declarados anteriormente, não repetir)
 // Parâmetros para controlar a posição do mesh miniGun
-let miniGunOffsetX = 0;
-let miniGunOffsetY = 0;
-let miniGunOffsetZ = 0;
+let miniGunPosX = 0;
+let miniGunPosY = 0;
+let miniGunPosZ = 0;
 const canvas = document.createElement("canvas");
 canvas.style.width = "100vw";
 canvas.style.height = "100vh";
@@ -314,13 +312,19 @@ ground.material.diffuseTexture.vScale = 15;
 ground.checkCollisions = true;                     // <-- importante
 
 scene.onBeforeRenderObservable.add(() => {
-        // Aplica offsets definidos pelo usuário ao mesh miniGun
-        if (window.miniGunMesh) {
-            window.miniGunMesh.position.addInPlace(new BABYLON.Vector3(miniGunOffsetX, miniGunOffsetY, miniGunOffsetZ));
-            // Faz o miniGun sempre apontar para a direção do crosshair
-            const lookPoint = window.miniGunMesh.position.add(aimForward.scale(10));
-            window.miniGunMesh.lookAt(lookPoint);
-        }
+    // Calcula aimForward antes de usar
+    let aimForward = new BABYLON.Vector3(
+        Math.sin(aimDir) * Math.cos(aimPitch),
+        Math.sin(aimPitch),
+        Math.cos(aimDir) * Math.cos(aimPitch)
+    ).normalize();
+    // Aplica offsets definidos pelo usuário ao mesh miniGun
+    if (window.miniGunMesh) {
+        window.miniGunMesh.position.addInPlace(new BABYLON.Vector3(miniGunPosX, miniGunPosY, miniGunPosZ));
+        // Faz o miniGun sempre apontar para a direção do crosshair
+        const lookPoint = window.miniGunMesh.position.add(aimForward.scale(10));
+        window.miniGunMesh.lookAt(lookPoint);
+    }
     const dt = engine.getDeltaTime()/1000;
 
     if (keys.a) moveDir -= TURN_SPEED_KEY * dt;
@@ -360,12 +364,12 @@ scene.onBeforeRenderObservable.add(() => {
 
     sphere.rotation.y = moveDir;
 
-    const aimForward = new BABYLON.Vector3(
+    aimForward = new BABYLON.Vector3(
         Math.sin(aimDir) * Math.cos(aimPitch),
         Math.sin(aimPitch),
         Math.cos(aimDir) * Math.cos(aimPitch)
     ).normalize();
-    //
+    // Calcula ponto de impacto no chão
     const y0 = sphere.position.y + 1.4;
     const vx = aimForward.x * PROJECTILE_SPEED;
     const vy = aimForward.y * PROJECTILE_SPEED;
