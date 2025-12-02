@@ -18,12 +18,10 @@
 <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
 
 <script>
-// Parâmetros para ajustar a posição do mesh miniGun
-// (já declarados anteriormente, não repetir)
 // Parâmetros para controlar a posição do mesh miniGun
-let miniGunPosX = 0;
-let miniGunPosY = 0;
-let miniGunPosZ = 0;
+let miniGunOffsetX = 0;
+let miniGunOffsetY = 0;
+let miniGunOffsetZ = 0;
 const canvas = document.createElement("canvas");
 canvas.style.width = "100vw";
 canvas.style.height = "100vh";
@@ -139,13 +137,12 @@ BABYLON.SceneLoader.ImportMesh("", "models/", "first_skin.glb", scene, (meshes, 
 
     // Remove miniGun da hierarquia do modelo3D e adiciona diretamente à cena
     /*#######################################################################*/
+
     const miniGunMesh = modelo3D.getChildMeshes().find(m => m.name === "miniGun");
+    miniGunMesh.position = new BABYLON.Vector3(0, 3, 0); // Reseta posição relativa
     if (miniGunMesh) {
-        // Salva posição absoluta original antes de remover da hierarquia
-        const originalPos = miniGunMesh.getAbsolutePosition().clone();
         miniGunMesh.parent = null;
         scene.addMesh(miniGunMesh);
-        miniGunMesh.position.copyFrom(originalPos); // garante pivô original
         window.miniGunMesh = miniGunMesh; // para acesso global no render loop
     }
     // Armazena as animações e pausa elas
@@ -312,19 +309,6 @@ ground.material.diffuseTexture.vScale = 15;
 ground.checkCollisions = true;                     // <-- importante
 
 scene.onBeforeRenderObservable.add(() => {
-    // Calcula aimForward antes de usar
-    let aimForward = new BABYLON.Vector3(
-        Math.sin(aimDir) * Math.cos(aimPitch),
-        Math.sin(aimPitch),
-        Math.cos(aimDir) * Math.cos(aimPitch)
-    ).normalize();
-    // Aplica offsets definidos pelo usuário ao mesh miniGun
-    if (window.miniGunMesh) {
-        window.miniGunMesh.position.addInPlace(new BABYLON.Vector3(miniGunPosX, miniGunPosY, miniGunPosZ));
-        // Faz o miniGun sempre apontar para a direção do crosshair
-        const lookPoint = window.miniGunMesh.position.add(aimForward.scale(10));
-        window.miniGunMesh.lookAt(lookPoint);
-    }
     const dt = engine.getDeltaTime()/1000;
 
     if (keys.a) moveDir -= TURN_SPEED_KEY * dt;
@@ -364,12 +348,12 @@ scene.onBeforeRenderObservable.add(() => {
 
     sphere.rotation.y = moveDir;
 
-    aimForward = new BABYLON.Vector3(
+    const aimForward = new BABYLON.Vector3(
         Math.sin(aimDir) * Math.cos(aimPitch),
         Math.sin(aimPitch),
         Math.cos(aimDir) * Math.cos(aimPitch)
     ).normalize();
-    // Calcula ponto de impacto no chão
+    //
     const y0 = sphere.position.y + 1.4;
     const vx = aimForward.x * PROJECTILE_SPEED;
     const vy = aimForward.y * PROJECTILE_SPEED;
@@ -404,8 +388,14 @@ scene.onBeforeRenderObservable.add(() => {
     }
     // Atualiza miniGunMesh independente do modelo3D
     if (window.miniGunMesh) {
-        // Mantém a posição original do mesh miniGun
-        const lookPoint = window.miniGunMesh.position.add(aimForward.scale(10));
+        let posX = miniGunOffsetX;
+        let posY = miniGunOffsetY;
+        let posZ = miniGunOffsetZ;
+        // Aplica offsets definidos pelo usuário
+        const miniGunPos = sphere.position.add(new BABYLON.Vector3(posX + 0.9, posY + 1.1, posZ));
+        window.miniGunMesh.position.copyFrom(miniGunPos);
+        // Faz o miniGun sempre apontar para a direção do crosshair
+        const lookPoint = miniGunPos.add(aimForward.scale(10));
         window.miniGunMesh.lookAt(lookPoint);
     }
 
