@@ -380,13 +380,13 @@ scene.onBeforeRenderObservable.add(() => {
         -Math.sin(aimDir) * (RADIUS + 0.5) // <-- ajuste profundidade
     );
     if (modelo3D) {
-        // Atualiza posição e rotação do modelo3D para seguir a sphere
+        // Atualiza posição do modelo3D para seguir a sphere
         modelo3D.position.x = sphere.position.x;
         modelo3D.position.z = sphere.position.z;
         modelo3D.position.y = sphere.position.y; // <-- ajuste vertical da modelo3D
 
-        // Faz a modelo3D olhar para a direção do crosshair
-        modelo3D.rotation.y = Math.atan2(rightOffset.x, rightOffset.z); 
+        // Corrige a frente do modelo3D somando 180º à rotação Y
+        modelo3D.rotation.y = Math.PI / 0.02 + Math.atan2(rightOffset.x, rightOffset.z);
     }
     // Atualiza miniGunMesh continuamente na mesma posição do spawn do bullet
     if (window.miniGunMesh) {
