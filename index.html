@@ -138,13 +138,14 @@
         camera.inputs.clear();
         camera.minZ = 0.1;
         camera.maxZ = 5000;
-        const camOffsetDefault = new BABYLON.Vector3(0, 3, 15);
-        const camOffsetSwitch = new BABYLON.Vector3(-1, 1, 5);
+        const camOffsetDefault = new BABYLON.Vector3(0, 3, 15); // camera padrão
+        const camOffsetSwitch = new BABYLON.Vector3(-1, 1, 5); // camera alternativa
         let camRot = 0;
         let cameraSwitched = false;
 
         let modelo3D = null;
         let modelo3DAnimations = [];
+        let miniGunOriginalOffset = null;
         BABYLON.SceneLoader.ImportMesh("", "models/", "first_skin.glb", scene, (meshes, particleSystems, skeletons, animationGroups) => {
             modelo3D = meshes[0];
             modelo3D.scaling.setAll(1); // <-- Ajusta o tamanho da modelo3D
@@ -160,8 +161,8 @@
             /*#######################################################################*/
 
             const miniGunMesh = modelo3D.getChildMeshes().find(m => m.name === "miniGun");
-            miniGunMesh.position = new BABYLON.Vector3(0, 3, 0); // Reseta posição relativa
             if (miniGunMesh) {
+                miniGunOriginalOffset = miniGunMesh.position.clone(); // Salva offset local original
                 miniGunMesh.parent = null;
                 scene.addMesh(miniGunMesh);
                 window.miniGunMesh = miniGunMesh; // para acesso global no render loop
@@ -411,15 +412,15 @@
                 const angle = Math.atan2(rightOffset.x, rightOffset.z);
                 modelo3D.rotation.y = angle - Math.PI / 2;
             }
-            // Atualiza miniGunMesh continuamente na mesma posição do spawn do bullet
-            if (window.miniGunMesh) {
-                const rightOffset = new BABYLON.Vector3(
-                    Math.cos(aimDir) * (RADIUS + 0.02),
-                    1,
-                    -Math.sin(aimDir) * (RADIUS + 0.02)
-                );
-                const miniGunPos = sphere.position.add(rightOffset);
+            // Atualiza miniGunMesh para manter posição original do modelo3D, fora da hierarquia, acompanhando a esfera
+            if (window.miniGunMesh && modelo3D && miniGunOriginalOffset) {
+                // Aplica rotação Y do modelo3D ao offset do miniGun
+                const rotMatrix = BABYLON.Matrix.RotationY(modelo3D.rotation.y);
+                const offsetRotated = BABYLON.Vector3.TransformCoordinates(miniGunOriginalOffset, rotMatrix);
+                const miniGunPos = modelo3D.position.add(offsetRotated);
                 window.miniGunMesh.position.copyFrom(miniGunPos);
+                // Sincroniza rotação Y do mesh miniGun com o modelo3D
+                window.miniGunMesh.rotation.y = modelo3D.rotation.y;
                 // Faz o miniGun sempre apontar para a direção do crosshair
                 const lookPoint = miniGunPos.add(aimForward.scale(10));
                 window.miniGunMesh.lookAt(lookPoint);
@@ -453,10 +454,6 @@
                     -Math.sin(aimDir) * (RADIUS + 0.02)
                 );
                 const spawn = sphere.position.add(rightOffset);
-                // Faz o mesh miniGun seguir a posição do spawn do bullet
-                if (window.miniGunMesh) {
-                    window.miniGunMesh.position.copyFrom(spawn);
-                }
                 const b = BABYLON.MeshBuilder.CreateSphere("bullet", { diameter: 0.12 }, scene);
                 b.position.copyFrom(spawn);
                 b.material = new BABYLON.StandardMaterial("", scene);
