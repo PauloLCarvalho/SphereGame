@@ -31,8 +31,7 @@
 
 <body>
 
-    <div id="info">Clique na tela → mouse para mirar<br>W/S = andar • A/D = virar • Clique = atirar • C = alternar
-        câmera • Shift = correr • Espaço = pular</div>
+    <div id="info">BY JOSEPH CLIMBER</div>
 
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
@@ -123,6 +122,23 @@
                 maxSpeed = 15;
                 isDeceleratingFromShift = false;
             }
+            // Lógica de pegar/largar armadura (modelo3D) com F
+            if (k === "f" && modelo3D) {
+                armadura = !armadura;
+                if (armadura) {
+                    // "Vestir" armadura: gruda modelo3D na sphere
+                    modelo3D.position.x = sphere.position.x;
+                    modelo3D.position.y = sphere.position.y;
+                    modelo3D.position.z = sphere.position.z;
+                    modelo3D.setEnabled(true);
+                } else {
+                    // "Largar" armadura: solta modelo3D no chão
+                    modelo3D.position.x = sphere.position.x;
+                    modelo3D.position.y = 0.1; // chão
+                    modelo3D.position.z = sphere.position.z;
+                    modelo3D.setEnabled(true);
+                }
+            }
         });
         window.addEventListener("keyup", e => {
             const k = e.key.toLowerCase();
@@ -146,6 +162,24 @@
         let modelo3D = null;
         let modelo3DAnimations = [];
         let miniGunOriginalOffset = null;
+        let canoModular = null;
+        let armadura = false; // Estado: está "vestindo" a armadura (modelo3D)
+
+        /*adicione modelo ao mapa*/ /*[não altere isso]*/
+        /*X -> lateral | Y -> altura | Z -> profundidade */
+        BABYLON.SceneLoader.ImportMesh("", "scenario/", "cano_modular.glb", scene, (meshes, particleSystems, skeletons,
+            animationGroups) => {
+            canoModular = meshes[0];
+            canoModular.scaling.setAll(1);
+            // Posiciona o cano_modular em uma posição fixa no mapa
+            canoModular.position.set(5, 1.3, 50); // ajuste conforme necessário
+            // Permite passar por dentro do cano: desativa colisão do mesh principal
+            canoModular.checkCollisions = false;
+            // Ativa colisão apenas nos filhos (paredes/suportes)
+            canoModular.getChildMeshes().forEach(child => child.checkCollisions = true);
+        });
+
+
         BABYLON.SceneLoader.ImportMesh("", "models/", "first_skin.glb", scene, (meshes, particleSystems, skeletons, animationGroups) => {
             modelo3D = meshes[0];
             modelo3D.scaling.setAll(1); // <-- Ajusta o tamanho da modelo3D
@@ -202,76 +236,6 @@
             const coverMaterial = new BABYLON.StandardMaterial("coverMat", scene);
             coverMaterial.diffuseColor = new BABYLON.Color3(0.4, 0.3, 0.2);
 
-            const walls = [
-                { pos: [0, 1.5, -30], size: [60, 3, 0.2] },
-                { pos: [0, 1.5, 30], size: [60, 3, 0.2] },
-                { pos: [-30, 1.5, 0], size: [0.2, 3, 60] },
-                { pos: [30, 1.5, 0], size: [0.2, 3, 60] }
-            ];
-
-            walls.forEach(w => {
-                const fence = BABYLON.MeshBuilder.CreatePlane("fence", {
-                    width: w.size[0] > 1 ? w.size[0] : w.size[2],
-                    height: w.size[1]
-                }, scene);
-                fence.position.set(w.pos[0], w.pos[1], w.pos[2]);
-
-                // Rotaciona para ficar vertical e na direção correta
-                if (w.size[0] > 1) {
-                    fence.rotation.y = 0;
-                } else {
-                    fence.rotation.y = Math.PI / 2;
-                }
-
-                fence.material = fenceMaterial;
-                fence.checkCollisions = true;
-
-                // Cria barras verticais da grade
-                const barCount = Math.floor((w.size[0] > 1 ? w.size[0] : w.size[2]) / 2);
-                for (let i = 0; i < barCount; i++) {
-                    const bar = BABYLON.MeshBuilder.CreateBox("bar", {
-                        width: 0.1,
-                        height: w.size[1],
-                        depth: 0.1
-                    }, scene);
-
-                    if (w.size[0] > 1) {
-                        bar.position.set(
-                            w.pos[0] - (w.size[0] / 2) + (i * 2) + 1,
-                            w.pos[1],
-                            w.pos[2]
-                        );
-                    } else {
-                        bar.position.set(
-                            w.pos[0],
-                            w.pos[1],
-                            w.pos[2] - (w.size[2] / 2) + (i * 2) + 1
-                        );
-                    }
-
-                    bar.material = fenceMaterial;
-                    bar.checkCollisions = true;
-                }
-
-                // Barras horizontais
-                const hBar1 = BABYLON.MeshBuilder.CreateBox("hbar", {
-                    width: w.size[0] > 1 ? w.size[0] : 0.1,
-                    height: 0.1,
-                    depth: w.size[0] > 1 ? 0.1 : w.size[2]
-                }, scene);
-                hBar1.position.set(w.pos[0], w.pos[1] + 1, w.pos[2]);
-                hBar1.material = fenceMaterial;
-                hBar1.checkCollisions = true;
-
-                const hBar2 = BABYLON.MeshBuilder.CreateBox("hbar", {
-                    width: w.size[0] > 1 ? w.size[0] : 0.1,
-                    height: 0.1,
-                    depth: w.size[0] > 1 ? 0.1 : w.size[2]
-                }, scene);
-                hBar2.position.set(w.pos[0], w.pos[1] - 1, w.pos[2]);
-                hBar2.material = fenceMaterial;
-                hBar2.checkCollisions = true;
-            });
 
             const covers = [
                 [-12, 8], [12, 8], [-12, -8], [12, -8],
@@ -321,8 +285,8 @@
         }
 
         createBattleMap();
-
-        const ground = BABYLON.MeshBuilder.CreateGround("ground", { width: 60, height: 60 }, scene);
+        /*TAMANHO DO CHÃO*/
+        const ground = BABYLON.MeshBuilder.CreateGround("ground", { width: 200, height: 200 }, scene);
         ground.position.y = 0;
         ground.material = new BABYLON.StandardMaterial("groundMat", scene);
         ground.material.diffuseTexture = new BABYLON.Texture("../texture/ciment_chao.jpg", scene);
@@ -401,17 +365,26 @@
                 0.5,                               // <-- ajuste vertical
                 -Math.sin(aimDir) * (RADIUS + 0.5) // <-- ajuste profundidade
             );
-            /*########## trecho funcional ###########*/
-            if (modelo3D) {
-                // POSIÇÃO — MANTÉM EXATAMENTE COMO VOCÊ JÁ TINHA (perfeita!)
-                modelo3D.position.x = sphere.position.x;
-                modelo3D.position.z = sphere.position.z;
-                modelo3D.position.y = sphere.position.y;   // ← não mexe aqui nunca mais
 
-                // ROTAÇÃO — virado 90° para a direita (anti-horário) da direção de movimento
-                const angle = Math.atan2(rightOffset.x, rightOffset.z);
-                modelo3D.rotation.y = angle - Math.PI / 2;
+
+
+            /*########## POSIÇÃO DA CABEÇA EM RELAÇÃO A SPHERE ###########*/
+            if (modelo3D) {
+                if (armadura) {
+                    // Se está "vestindo" a armadura, gruda na sphere
+                    modelo3D.position.x = sphere.position.x;
+                    modelo3D.position.z = sphere.position.z;
+                    modelo3D.position.y = sphere.position.y;
+                    // ROTAÇÃO — virado 90° para a direita (anti-horário) da direção de movimento
+                    const angle = Math.atan2(rightOffset.x, rightOffset.z);
+                    modelo3D.rotation.y = angle - Math.PI / 2;
+                }
+                // Se não está "vestindo", modelo3D fica parado onde foi largado
             }
+
+
+
+
             // Atualiza miniGunMesh para manter posição original do modelo3D, fora da hierarquia, acompanhando a esfera
             if (window.miniGunMesh && modelo3D && miniGunOriginalOffset) {
                 // Aplica rotação Y do modelo3D ao offset do miniGun
@@ -425,6 +398,8 @@
                 const lookPoint = miniGunPos.add(aimForward.scale(10));
                 window.miniGunMesh.lookAt(lookPoint);
             }
+
+
 
             // Aplica gravidade com moveWithCollisions
             velocityY += GRAVITY * dt;
@@ -444,8 +419,9 @@
                 isGrounded = false;
             }
 
+            // Só lança o bullet se o modelo3D estiver "vestido" (armadura = true)
             cooldown -= dt;
-            if (isFiring && cooldown <= 0) {
+            if (isFiring && cooldown <= 0 && armadura) {
                 cooldown = 0.07;
                 // Calcula posição de spawn do bullet normalmente
                 const rightOffset = new BABYLON.Vector3(
