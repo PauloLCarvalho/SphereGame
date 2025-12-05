@@ -124,17 +124,21 @@
             }
             // Lógica de pegar/largar armadura (modelo3D) com F
             if (k === "f" && modelo3D) {
-                armadura = !armadura;
-                if (armadura) {
-                    // "Vestir" armadura: gruda modelo3D na sphere
-                    modelo3D.position.x = sphere.position.x;
-                    modelo3D.position.y = sphere.position.y;
-                    modelo3D.position.z = sphere.position.z;
-                    modelo3D.setEnabled(true);
+                if (!armadura) {
+                    // Só pega se estiver tocando
+                    const distancia = BABYLON.Vector3.Distance(sphere.position, modelo3D.position);
+                    if (distancia <= RADIUS + 0.5) {
+                        armadura = true;
+                        modelo3D.position.x = sphere.position.x;
+                        modelo3D.position.y = sphere.position.y;
+                        modelo3D.position.z = sphere.position.z;
+                        modelo3D.setEnabled(true);
+                    }
                 } else {
-                    // "Largar" armadura: solta modelo3D no chão
+                    // Se já está "vestido", larga ao pressionar F
+                    armadura = false;
                     modelo3D.position.x = sphere.position.x;
-                    modelo3D.position.y = 0.1; // chão
+                    modelo3D.position.y = 0.1;
                     modelo3D.position.z = sphere.position.z;
                     modelo3D.setEnabled(true);
                 }
@@ -167,17 +171,18 @@
 
         /*adicione modelo ao mapa*/ /*[não altere isso]*/
         /*X -> lateral | Y -> altura | Z -> profundidade */
-        BABYLON.SceneLoader.ImportMesh("", "scenario/", "cano_modular.glb", scene, (meshes, particleSystems, skeletons,
+
+        /*
+        BABYLON.SceneLoader.ImportMesh("", "scenario/", "cano_modular2.glb", scene, (meshes, particleSystems, skeletons,
             animationGroups) => {
             canoModular = meshes[0];
             canoModular.scaling.setAll(1);
-            // Posiciona o cano_modular em uma posição fixa no mapa
-            canoModular.position.set(5, 1.3, 50); // ajuste conforme necessário
-            // Permite passar por dentro do cano: desativa colisão do mesh principal
-            canoModular.checkCollisions = false;
-            // Ativa colisão apenas nos filhos (paredes/suportes)
+            canoModular.position.set(5, 0, 50);
+            // Colisão simples: ativa checkCollisions no mesh principal e todos os filhos
+            canoModular.checkCollisions = true;
             canoModular.getChildMeshes().forEach(child => child.checkCollisions = true);
         });
+        */
 
 
         BABYLON.SceneLoader.ImportMesh("", "models/", "first_skin.glb", scene, (meshes, particleSystems, skeletons, animationGroups) => {
@@ -293,6 +298,31 @@
         ground.material.diffuseTexture.uScale = 15;
         ground.material.diffuseTexture.vScale = 15;
         ground.checkCollisions = true;                     // <-- importante
+
+        // Função para criar um cano de teste procedural
+        function criarCanoTeste(scene) {
+            // Cria um caminho reto para o tubo, base em y=0
+            const comprimento = 6;
+            const path = [
+                new BABYLON.Vector3(0, 0, 20),
+                new BABYLON.Vector3(0, comprimento, 20)
+            ];
+            // Tubo oco (parede do cano)
+            const tubo = BABYLON.MeshBuilder.CreateTube("cano_teste_tubo", {
+                path: path,
+                radius: 2,
+                tessellation: 32,
+                cap: BABYLON.Mesh.NO_CAP
+            }, scene);
+            tubo.checkCollisions = true;
+            tubo.material = new BABYLON.StandardMaterial("matTubo", scene);
+            tubo.material.diffuseColor = new BABYLON.Color3(0.7, 0.7, 0.7);
+            tubo.rotation.x = Math.PI / 2;
+            // Após rotação, o eixo Y vira Z. Ajusta para que a base fique no chão:
+            tubo.position.y = 2; // raio do tubo
+            tubo.position.z = 20; // mantém posição original
+        }
+        criarCanoTeste(scene);
 
         scene.onBeforeRenderObservable.add(() => {
             const dt = engine.getDeltaTime() / 1000;
