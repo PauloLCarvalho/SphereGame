@@ -115,7 +115,21 @@
         window.addEventListener("keydown", e => {
             const k = e.key.toLowerCase();
             if ("wasd".includes(k)) keys[k] = true;
-            if (k === " " && isGrounded) { velocityY = JUMP_POWER; isGrounded = false; }
+            // Corrige detecção de chão para terrenos irregulares
+            if (k === " " && isGrounded) {
+                // Raycast para detectar altura do terreno abaixo da sphere
+                const rayDown = new BABYLON.Ray(sphere.position, new BABYLON.Vector3(0, -1, 0), RADIUS + 2);
+                const hit = scene.pickWithRay(rayDown, mesh => mesh.name === "terrenoVerde");
+                let alturaChao = 0;
+                if (hit.hit) {
+                    alturaChao = hit.pickedPoint.y;
+                }
+                // Só permite pular se estiver realmente próximo do terreno
+                if (Math.abs(sphere.position.y - alturaChao) <= RADIUS + 0.2) {
+                    velocityY = JUMP_POWER;
+                    isGrounded = false;
+                }
+            }
             if (k === "c") cameraSwitched = !cameraSwitched;
             if (e.shiftKey && !isShiftPressed) {
                 isShiftPressed = true;
@@ -129,16 +143,18 @@
                     const distancia = BABYLON.Vector3.Distance(sphere.position, modelo3D.position);
                     if (distancia <= RADIUS + 0.5) {
                         armadura = true;
-                        modelo3D.position.x = sphere.position.x;
-                        modelo3D.position.y = sphere.position.y;
-                        modelo3D.position.z = sphere.position.z;
+                        // Centraliza pelo centro do bounding box
+                        const centroModelo = modelo3D.getBoundingInfo().boundingBox.centerWorld;
+                        const offset = sphere.position.subtract(centroModelo);
+                        modelo3D.position.addInPlace(offset);
                         modelo3D.setEnabled(true);
                     }
                 } else {
                     // Se já está "vestido", larga ao pressionar F
                     armadura = false;
                     modelo3D.position.x = sphere.position.x;
-                    modelo3D.position.y = 0.1;
+                    // Mantém a posição Y atual do modelo3D
+                    // modelo3D.position.y = 0.1; // Removido!
                     modelo3D.position.z = sphere.position.z;
                     modelo3D.setEnabled(true);
                 }
@@ -166,25 +182,10 @@
         let modelo3D = null;
         let modelo3DAnimations = [];
         let miniGunOriginalOffset = null;
-        let canoModular = null;
         let armadura = false; // Estado: está "vestindo" a armadura (modelo3D)
 
         /*adicione modelo ao mapa*/ /*[não altere isso]*/
         /*X -> lateral | Y -> altura | Z -> profundidade */
-
-        /*
-        BABYLON.SceneLoader.ImportMesh("", "scenario/", "cano_modular2.glb", scene, (meshes, particleSystems, skeletons,
-            animationGroups) => {
-            canoModular = meshes[0];
-            canoModular.scaling.setAll(1);
-            canoModular.position.set(5, 0, 50);
-            // Colisão simples: ativa checkCollisions no mesh principal e todos os filhos
-            canoModular.checkCollisions = true;
-            canoModular.getChildMeshes().forEach(child => child.checkCollisions = true);
-        });
-        */
-
-
         BABYLON.SceneLoader.ImportMesh("", "models/", "first_skin.glb", scene, (meshes, particleSystems, skeletons, animationGroups) => {
             modelo3D = meshes[0];
             modelo3D.scaling.setAll(1); // <-- Ajusta o tamanho da modelo3D
@@ -225,104 +226,55 @@
             if (e.type === BABYLON.PointerEventTypes.POINTERUP && e.event.button === 0) isFiring = false;
         });
 
-        function createBattleMap() {
-            const blockMaterial = new BABYLON.StandardMaterial("blockMat", scene);
-            blockMaterial.diffuseTexture = new BABYLON.Texture("texture/vigas.jpg", scene);
-            blockMaterial.diffuseTexture.uScale = 2;
-            blockMaterial.diffuseTexture.vScale = 2;
-
-            const fenceMaterial = new BABYLON.StandardMaterial("fenceMat", scene);
-            fenceMaterial.diffuseColor = new BABYLON.Color3(0.3, 0.3, 0.35);
-            fenceMaterial.specularColor = new BABYLON.Color3(0.5, 0.5, 0.5);
-            fenceMaterial.emissiveColor = new BABYLON.Color3(0.05, 0.05, 0.05);
-            fenceMaterial.alpha = 0.6;
-            fenceMaterial.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
-
-            const coverMaterial = new BABYLON.StandardMaterial("coverMat", scene);
-            coverMaterial.diffuseColor = new BABYLON.Color3(0.4, 0.3, 0.2);
-
-
-            const covers = [
-                [-12, 8], [12, 8], [-12, -8], [12, -8],
-                [-18, 0], [18, 0], [0, 15], [0, -15],
-                [-8, 18], [8, -18], [-15, -15], [15, 15]
-            ];
-
-            covers.forEach(pos => {
-                const cover = BABYLON.MeshBuilder.CreateBox("cover", { width: 2, height: 1, depth: 2 }, scene);
-                cover.position.set(pos[0], 0.5, pos[1]);
-                cover.material = coverMaterial;
-                cover.checkCollisions = true;              // <-- importante
+        // Cria um terreno procedural verde com leves relevos
+        function criarTerrenoVerde(scene) {
+            const largura = 200;
+            const profundidade = 200;
+            const subdivisoes = 100;
+            // Gera altura procedural simples (Perlin-like)
+            function altura(x, z) {
+                return 2 * Math.sin(x / 20) * Math.cos(z / 25) + 1.2 * Math.sin(z / 15);
+            }
+            const vertexData = BABYLON.VertexData.CreateGround({
+                width: largura,
+                height: profundidade,
+                subdivisions: subdivisoes
             });
-
-            const buildings = [
-                { pos: [-18, 2.5, -18], size: [4, 5, 4] },
-                { pos: [18, 3, 18], size: [5, 6, 3] },
-                { pos: [-20, 2, 15], size: [3, 4, 6] },
-                { pos: [15, 2.5, -20], size: [6, 5, 4] },
-                { pos: [5, 4, 5], size: [3, 8, 3] }
-            ];
-
-            buildings.forEach(b => {
-                const building = BABYLON.MeshBuilder.CreateBox("building", {
-                    width: b.size[0], height: b.size[1], depth: b.size[2]
-                }, scene);
-                building.position.set(b.pos[0], b.size[1] / 2, b.pos[2]);
-                building.material = blockMaterial;
-                building.checkCollisions = true;           // <-- importante
-            });
-
-            const platforms = [
-                [-10, -6], [10, 6], [6, -10], [-6, 12]
-            ];
-
-            platforms.forEach(pos => {
-                const platform = BABYLON.MeshBuilder.CreateBox("platform", { width: 4, height: 0.3, depth: 4 }, scene);
-                platform.position.set(pos[0], 2.5, pos[1]);
-                platform.material = coverMaterial;
-                platform.checkCollisions = true;           // <-- importante
-
-                const support = BABYLON.MeshBuilder.CreateBox("support", { width: 0.5, height: 2.5, depth: 0.5 }, scene);
-                support.position.set(pos[0], 1.25, pos[1]);
-                support.material = blockMaterial;
-                support.checkCollisions = true;             // <-- importante
-            });
+            // Gradiente marrom claro/escuro
+            const cores = [];
+            for (let i = 0; i < vertexData.positions.length; i += 3) {
+                const x = vertexData.positions[i];
+                const z = vertexData.positions[i + 2];
+                const y = altura(x, z);
+                vertexData.positions[i + 1] = y;
+                const t = (y + 4) / 8;
+                const r = 0.35 + (0.82 - 0.35) * t;
+                const g = 0.24 + (0.71 - 0.24) * t;
+                const b = 0.16 + (0.55 - 0.16) * t;
+                cores.push(r, g, b, 1);
+            }
+            vertexData.colors = cores;
+            const terreno = new BABYLON.Mesh("terrenoVerde", scene);
+            vertexData.applyToMesh(terreno);
+            terreno.position.y = 0;
+            terreno.checkCollisions = true;
+            // Material com textura de cimento e vertex color
+            const matCimento = new BABYLON.StandardMaterial("matCimento", scene);
+            matCimento.diffuseTexture = new BABYLON.Texture("../texture/ciment_chao.jpg", scene);
+            matCimento.diffuseTexture.uScale = 15;
+            matCimento.diffuseTexture.vScale = 15;
+            matCimento.specularColor = new BABYLON.Color3(0.1, 0.1, 0.1);
+            matCimento.vertexColorEnabled = true;
+            terreno.material = matCimento;
+            // Sombra
+            const luzDirecional = new BABYLON.DirectionalLight("dirLight", new BABYLON.Vector3(-0.5, -1, -0.5), scene);
+            luzDirecional.position = new BABYLON.Vector3(50, 80, 50);
+            luzDirecional.intensity = 0.7;
+            const sombra = new BABYLON.ShadowGenerator(2048, luzDirecional);
+            sombra.addShadowCaster(terreno);
+            terreno.receiveShadows = true;
         }
-
-        createBattleMap();
-        /*TAMANHO DO CHÃO*/
-        const ground = BABYLON.MeshBuilder.CreateGround("ground", { width: 200, height: 200 }, scene);
-        ground.position.y = 0;
-        ground.material = new BABYLON.StandardMaterial("groundMat", scene);
-        ground.material.diffuseTexture = new BABYLON.Texture("../texture/ciment_chao.jpg", scene);
-        ground.material.diffuseTexture.uScale = 15;
-        ground.material.diffuseTexture.vScale = 15;
-        ground.checkCollisions = true;                     // <-- importante
-
-        // Função para criar um cano de teste procedural
-        function criarCanoTeste(scene) {
-            // Cria um caminho reto para o tubo, base em y=0
-            const comprimento = 6;
-            const path = [
-                new BABYLON.Vector3(0, 0, 20),
-                new BABYLON.Vector3(0, comprimento, 20)
-            ];
-            // Tubo oco (parede do cano)
-            const tubo = BABYLON.MeshBuilder.CreateTube("cano_teste_tubo", {
-                path: path,
-                radius: 2,
-                tessellation: 32,
-                cap: BABYLON.Mesh.NO_CAP
-            }, scene);
-            tubo.checkCollisions = true;
-            tubo.material = new BABYLON.StandardMaterial("matTubo", scene);
-            tubo.material.diffuseColor = new BABYLON.Color3(0.7, 0.7, 0.7);
-            tubo.rotation.x = Math.PI / 2;
-            // Após rotação, o eixo Y vira Z. Ajusta para que a base fique no chão:
-            tubo.position.y = 2; // raio do tubo
-            tubo.position.z = 20; // mantém posição original
-        }
-        criarCanoTeste(scene);
+        criarTerrenoVerde(scene);
 
         scene.onBeforeRenderObservable.add(() => {
             const dt = engine.getDeltaTime() / 1000;
